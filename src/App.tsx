@@ -173,6 +173,15 @@ const App: React.FC = () => {
     return players.find(player => player.id === winner.playerId) || null;
   }, [players, winner]);
 
+  const liveLeaderPlayer = useMemo(() => {
+    if (!raceState || raceState.status !== 'racing') return null;
+    const balls = Object.values(raceState.balls) as BallState[];
+    if (balls.length === 0) return null;
+
+    const leaderBall = [...balls].sort((a, b) => b.progress - a.progress)[0];
+    return players.find(player => player.id === leaderBall.id) || null;
+  }, [players, raceState]);
+
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a] text-white font-sans flex items-center justify-center p-4">
       <div
@@ -187,6 +196,18 @@ const App: React.FC = () => {
             <p className="text-sm font-black uppercase tracking-tighter">{map?.name || 'Marble Race'}</p>
           </div>
         </div>
+
+        {liveLeaderPlayer && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-4 pointer-events-none">
+            <div className="bg-black/45 backdrop-blur-md border border-white/10 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2">
+              <img
+                src={liveLeaderPlayer.spriteUrl}
+                alt={liveLeaderPlayer.name}
+                className="w-16 h-16 rounded-full border-2 border-white/40 object-cover"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col items-end gap-2 pointer-events-auto">
           {(raceState?.status === 'waiting' || raceState?.status === 'finished') && (
