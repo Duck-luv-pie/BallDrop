@@ -1,0 +1,5 @@
+{
+  "name": "Marble Race Multiplayer",
+  "description": "A real-time multiplayer marble racing simulation with authoritative server-side physics.",
+  "requestFramePermissions": []
+}
