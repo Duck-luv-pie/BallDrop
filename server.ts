@@ -99,6 +99,30 @@ async function startServer() {
   let ballBodies: Map<string, Matter.Body> = new Map();
   let spinningBodies: Matter.Body[] = [];
   let ballStuckTime: Map<string, number> = new Map();
+  let raceEndTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function finalizeRace() {
+    if (raceState.status !== 'racing') return;
+
+    raceState.status = 'finished';
+    raceState.countdown = 0;
+
+    const orderedBalls = Object.entries(raceState.balls).sort(([, a], [, b]) => {
+      if (a.finished !== b.finished) return a.finished ? -1 : 1;
+      if (a.finished && b.finished) return (a.rank || 999) - (b.rank || 999);
+      return b.progress - a.progress;
+    });
+
+    const results = orderedBalls.map(([id, ball], idx) => ({
+      playerId: id,
+      name: players.get(id)?.name || 'Unknown',
+      rank: ball.rank || idx + 1,
+      time: ball.finishTime || 0
+    }));
+
+    io.emit('raceUpdate', raceState);
+    io.emit('raceEnd', results);
+  }
 
   function setupMap(map: MapData) {
     Matter.World.clear(world, false);
@@ -210,7 +234,6 @@ async function startServer() {
       Matter.Engine.update(engine, 1000 / 60);
 
       const now = Date.now();
-      let allFinished = true;
 
       for (const [id, body] of ballBodies.entries()) {
         const ball = raceState.balls[id];
@@ -254,23 +277,16 @@ async function startServer() {
             ball.finished = true;
             ball.finishTime = now - (raceState.startTime || now);
             ball.rank = Object.values(raceState.balls).filter(b => b.finished).length;
-          } else {
-            allFinished = false;
           }
         }
       }
 
-      if (allFinished && Object.keys(raceState.balls).length > 0) {
-        raceState.status = 'finished';
-        const results = Object.entries(raceState.balls)
-          .map(([id, b]) => ({
-            playerId: id,
-            name: players.get(id)?.name || 'Unknown',
-            rank: b.rank || 999,
-            time: b.finishTime || 0
-          }))
-          .sort((a, b) => a.rank - b.rank);
-        io.emit('raceEnd', results);
+      const hasFirstFinisher = Object.values(raceState.balls).some(ball => ball.finished);
+      if (hasFirstFinisher && raceEndTimeout === null) {
+        raceEndTimeout = setTimeout(() => {
+          raceEndTimeout = null;
+          finalizeRace();
+        }, 500);
       }
 
       io.emit('raceUpdate', raceState);
@@ -301,6 +317,11 @@ async function startServer() {
 
     socket.on('startRace', () => {
       if (raceState.status === 'racing' || raceState.status === 'countdown') return;
+
+      if (raceEndTimeout !== null) {
+        clearTimeout(raceEndTimeout);
+        raceEndTimeout = null;
+      }
 
       setupMap(sampleMap);
       
@@ -333,6 +354,7 @@ async function startServer() {
 
       raceState.status = 'countdown';
       raceState.countdown = 3;
+      io.emit('raceUpdate', raceState);
       
       const countdownInterval = setInterval(() => {
         raceState.countdown--;

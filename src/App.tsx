@@ -14,10 +14,15 @@ const App: React.FC = () => {
   const [playerName, setPlayerName] = useState('');
   const [spriteUrl, setSpriteUrl] = useState('');
   const [results, setResults] = useState<{ playerId: string; name: string; rank: number; time: number }[] | null>(null);
+  const [showGo, setShowGo] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const cameraRef = useRef({ x: 400, y: 0, zoom: 0.8 });
+  const trackedLeaderIdRef = useRef<string | null>(null);
+  const pendingLeaderRef = useRef<{ id: string; since: number } | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 1100, height: 700 });
 
   useEffect(() => {
     const newSocket: Socket<ServerToClientEvents, ClientToServerEvents> = io();
@@ -38,7 +43,13 @@ const App: React.FC = () => {
     });
 
     newSocket.on('raceUpdate', (state) => {
-      setRaceState(state);
+      setRaceState((prev) => {
+        if (prev?.status === 'countdown' && state.status === 'racing') {
+          setShowGo(true);
+          window.setTimeout(() => setShowGo(false), 900);
+        }
+        return state;
+      });
     });
 
     newSocket.on('raceStart', (mapData) => {
@@ -61,28 +72,77 @@ const App: React.FC = () => {
     }
   }, [joined]);
 
+  useEffect(() => {
+    if (!popupRef.current) return;
+
+    const updateSize = () => {
+      if (!popupRef.current) return;
+      setCanvasSize({
+        width: Math.max(320, Math.floor(popupRef.current.clientWidth)),
+        height: Math.max(240, Math.floor(popupRef.current.clientHeight))
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(popupRef.current);
+
+    return () => observer.disconnect();
+  }, []);
+
   // Game Loop
   useEffect(() => {
     let animationFrameId: number;
+    const LEADER_SWITCH_GRACE_MS = 140;
+    const LEADER_SWITCH_MARGIN = 10;
 
     const loop = () => {
       if (rendererRef.current && map && raceState) {
-        // Camera logic: follow leader
+        // Camera logic: follow leader vertically with switch grace period
         const balls = Object.values(raceState.balls) as BallState[];
         if (balls.length > 0) {
-          const leader = balls.reduce((prev, curr) => (curr.progress > prev.progress ? curr : prev), balls[0]);
-          
-          // Smooth camera interpolation
-          const targetX = leader.position.x;
-          const targetY = leader.position.y;
-          
-          // Course width is 800, so we center it
-          cameraRef.current.x += (targetX - cameraRef.current.x) * 0.1;
+          const now = performance.now();
+          const sortedByProgress = [...balls].sort((a, b) => b.progress - a.progress);
+          const topBall = sortedByProgress[0];
+
+          if (!trackedLeaderIdRef.current) {
+            trackedLeaderIdRef.current = topBall.id;
+          }
+
+          const currentTracked = balls.find(ball => ball.id === trackedLeaderIdRef.current) || topBall;
+
+          if (topBall.id !== currentTracked.id) {
+            const progressGap = topBall.progress - currentTracked.progress;
+
+            if (progressGap > LEADER_SWITCH_MARGIN) {
+              trackedLeaderIdRef.current = topBall.id;
+              pendingLeaderRef.current = null;
+            } else if (pendingLeaderRef.current?.id === topBall.id) {
+              if (now - pendingLeaderRef.current.since >= LEADER_SWITCH_GRACE_MS) {
+                trackedLeaderIdRef.current = topBall.id;
+                pendingLeaderRef.current = null;
+              }
+            } else {
+              pendingLeaderRef.current = { id: topBall.id, since: now };
+            }
+          } else {
+            pendingLeaderRef.current = null;
+          }
+
+          const trackedLeader = balls.find(ball => ball.id === trackedLeaderIdRef.current) || topBall;
+
+          // Keep horizontal camera centered on course; only follow vertical movement.
+          const targetX = 400;
+          const targetY = trackedLeader.position.y;
+
+          cameraRef.current.x += (targetX - cameraRef.current.x) * 0.12;
           cameraRef.current.y += (targetY - cameraRef.current.y) * 0.1;
 
           rendererRef.current.setCamera(cameraRef.current.x, cameraRef.current.y, cameraRef.current.zoom);
         } else {
-          // If no balls, center on the course
+          // If no balls, center on the course and reset tracked leader state.
+          trackedLeaderIdRef.current = null;
+          pendingLeaderRef.current = null;
           cameraRef.current.x += (400 - cameraRef.current.x) * 0.1;
           cameraRef.current.y += (0 - cameraRef.current.y) * 0.1;
           rendererRef.current.setCamera(cameraRef.current.x, cameraRef.current.y, cameraRef.current.zoom);
@@ -103,8 +163,22 @@ const App: React.FC = () => {
     }
   };
 
+  const winner = useMemo(() => {
+    if (!results || results.length === 0) return null;
+    return results[0];
+  }, [results]);
+
+  const winnerPlayer = useMemo(() => {
+    if (!winner) return null;
+    return players.find(player => player.id === winner.playerId) || null;
+  }, [players, winner]);
+
   return (
-    <div className="fixed inset-0 bg-[#0a0a0a] text-white overflow-hidden flex flex-col font-sans">
+    <div className="min-h-screen w-full bg-[#0a0a0a] text-white font-sans flex items-center justify-center p-4">
+      <div
+        ref={popupRef}
+        className="relative w-full max-w-[1200px] h-[86vh] max-h-[760px] min-h-[520px] bg-[#050505] rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
+      >
       {/* HUD: Top Bar */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 pointer-events-none">
         <div className="flex flex-col gap-2 pointer-events-auto">
@@ -126,17 +200,17 @@ const App: React.FC = () => {
         </div>
       </div>
           
-          {raceState?.status === 'countdown' && (
-            <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-50">
+          {(raceState?.status === 'countdown' || showGo) && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
               <motion.div 
-                key={raceState.countdown}
+                key={showGo ? 'go' : raceState?.countdown}
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1.2, opacity: 1 }}
                 exit={{ scale: 2, opacity: 0 }}
                 className="text-white font-black text-[200px] drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] stroke-black"
                 style={{ WebkitTextStroke: '8px black' }}
               >
-                {raceState.countdown}
+                {showGo ? 'GO!' : raceState?.countdown}
               </motion.div>
             </div>
           )}
@@ -166,8 +240,8 @@ const App: React.FC = () => {
       {/* Main Canvas */}
       <canvas
         ref={canvasRef}
-        width={window.innerWidth}
-        height={window.innerHeight}
+        width={canvasSize.width}
+        height={canvasSize.height}
         className="w-full h-full cursor-crosshair"
       />
 
@@ -178,35 +252,48 @@ const App: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="absolute inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
             <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="max-w-xs w-full bg-black/80 rounded-2xl border border-white/10 p-6 shadow-2xl"
+              initial={{ scale: 0.9, y: 24, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 24, opacity: 0 }}
+              className="w-[320px] max-w-full bg-black/90 rounded-2xl border border-white/15 p-4 shadow-2xl pointer-events-auto"
             >
-              <div className="text-center mb-6">
-                <h2 className="text-2xl font-black uppercase tracking-tighter">Results</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white/50">Winner</h2>
+                <button
+                  onClick={() => setResults(null)}
+                  className="text-xs font-black uppercase tracking-tighter text-white/60 hover:text-white"
+                >
+                  Close
+                </button>
               </div>
 
-              <div className="space-y-2 mb-6">
-                {results.map((res, idx) => (
-                  <div key={res.playerId} className={`flex items-center justify-between p-3 rounded-xl border ${idx === 0 ? 'bg-white/10 border-white/30' : 'bg-white/5 border-white/10'}`}>
+              {winner && (
+                <div className="mb-4 p-3 rounded-xl border border-white/20 bg-white/10 text-center">
+                  {winnerPlayer?.spriteUrl && (
+                    <img
+                      src={winnerPlayer.spriteUrl}
+                      alt={winner.name}
+                      className="w-14 h-14 rounded-full mx-auto mb-2 border-2 border-white/40 object-cover"
+                    />
+                  )}
+                  <p className="text-xl font-black tracking-tighter">{winner.name} wins!</p>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                {results.slice(0, 3).map((res, idx) => (
+                  <div key={res.playerId} className={`flex items-center justify-between p-2 rounded-lg border ${idx === 0 ? 'bg-white/10 border-white/30' : 'bg-white/5 border-white/10'}`}>
                     <div className="flex items-center gap-3">
-                      <span className={`text-xl font-black ${idx === 0 ? 'text-white' : 'text-white/20'}`}>{idx + 1}</span>
-                      <span className="text-sm font-black uppercase tracking-tighter">{res.name}</span>
+                      <span className={`text-sm font-black ${idx === 0 ? 'text-white' : 'text-white/30'}`}>{idx + 1}</span>
+                      <span className="text-xs font-black tracking-tighter">{res.name}</span>
                     </div>
                     <span className="font-mono text-xs text-white/40">{(res.time / 1000).toFixed(2)}s</span>
                   </div>
                 ))}
               </div>
-
-              <button
-                onClick={() => setResults(null)}
-                className="w-full bg-white text-black font-black py-3 rounded-xl hover:bg-white/90 transition-all uppercase tracking-tighter"
-              >
-                Close
-              </button>
             </motion.div>
           </motion.div>
         )}
@@ -217,6 +304,7 @@ const App: React.FC = () => {
         <div className="bg-black/40 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter text-white/40 flex items-center gap-2">
           <Camera className="w-3 h-3" /> Tracking Leader
         </div>
+      </div>
       </div>
     </div>
   );
