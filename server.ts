@@ -16,7 +16,19 @@ dotenv.config({ quiet: true });
 
 const PORT = Number(process.env.PORT || 3000);
 const MUSICFY_API_BASE_URL = process.env.MUSICFY_BASE_URL || 'https://api.musicfy.lol/v1';
-const MUSICFY_API_KEY = process.env.MUSICFY_API_KEY;
+const DEFAULT_MUSICFY_VOICE_ID = 'cmm6o33lf0001jy071favwx29';
+const MUSICFY_API_KEY = process.env.MUSICFY_API_KEY || DEFAULT_MUSICFY_VOICE_ID;
+
+const FALLBACK_MUSICFY_VOICES: MusicfyVoice[] = [
+  {
+    id: DEFAULT_MUSICFY_VOICE_ID,
+    name: 'spongebob'
+  },
+  {
+    id: DEFAULT_MUSICFY_VOICE_ID,
+    name: 'donald trump'
+  }
+];
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const STORAGE_DIR = path.resolve(process.cwd(), 'storage');
@@ -721,9 +733,9 @@ async function startServer() {
 
   app.get('/api/musicfy/voices', async (_req, res) => {
     if (!MUSICFY_API_KEY) {
-      return res.status(500).json({
-        error: 'Missing MUSICFY_API_KEY',
-        message: 'Set MUSICFY_API_KEY in .env.local before calling Musicfy routes.'
+      return res.json({
+        voices: FALLBACK_MUSICFY_VOICES,
+        warning: 'Missing MUSICFY_API_KEY; using fallback voices.'
       });
     }
 
@@ -747,8 +759,9 @@ async function startServer() {
         raw: payload
       });
     } catch (error) {
-      return res.status(500).json({
-        error: 'Unable to fetch Musicfy voices',
+      return res.json({
+        voices: FALLBACK_MUSICFY_VOICES,
+        warning: 'Musicfy is unreachable; using fallback voices.',
         detail: error instanceof Error ? error.message : String(error)
       });
     }
