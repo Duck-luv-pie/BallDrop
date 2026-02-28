@@ -45,7 +45,7 @@ export class Renderer {
     ctx.translate(-camera.x, -camera.y);
 
     // Draw Map Background (Bright Blue like in the images)
-    ctx.fillStyle = '#00d4ff'; 
+    ctx.fillStyle = '#00d4ff';
     ctx.fillRect(0, 0, map.worldSize.x, map.worldSize.y);
 
     // Draw Static Obstacles (Black rectangles and circles)
@@ -53,13 +53,13 @@ export class Renderer {
     map.staticObstacles.forEach(obs => {
       ctx.save();
       ctx.translate(obs.position.x, obs.position.y);
-      
+
       let angle = obs.angle || 0;
       if (obs.angularVelocity && race.status === 'racing' && race.startTime) {
         const elapsedTicks = (Date.now() - race.startTime) / (1000 / 60);
         angle += obs.angularVelocity * elapsedTicks;
       }
-      
+
       ctx.rotate(angle);
       if (obs.type === 'rectangle') {
         ctx.fillRect(-obs.size!.x / 2, -obs.size!.y / 2, obs.size!.x, obs.size!.y);
@@ -73,6 +73,18 @@ export class Renderer {
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(obs.radius!, 0);
+        ctx.stroke();
+      } else if (obs.type === 'polygon' && obs.vertices && obs.vertices.length > 2) {
+        // Ring gate – draw the C-shape polygon in black with a white edge highlight
+        ctx.beginPath();
+        obs.vertices.forEach((v, i) => {
+          if (i === 0) ctx.moveTo(v.x, v.y);
+          else ctx.lineTo(v.x, v.y);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
         ctx.stroke();
       }
       ctx.restore();
@@ -112,7 +124,7 @@ export class Renderer {
     // Draw Trails
     Object.entries(race.balls).forEach(([id, ball]) => {
       if (ball.finished) return;
-      
+
       let trail = this.ballTrails.get(id) || [];
       trail.push({ x: ball.position.x, y: ball.position.y });
       if (trail.length > 30) trail.shift();
@@ -173,13 +185,13 @@ export class Renderer {
       const name = player.name;
       ctx.font = '900 32px Inter';
       ctx.textAlign = 'center';
-      
+
       // Stroke
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 12;
       ctx.lineJoin = 'round';
       ctx.strokeText(name, 0, 0);
-      
+
       // Fill
       ctx.fillStyle = '#ffffff';
       ctx.fillText(name, 0, 0);

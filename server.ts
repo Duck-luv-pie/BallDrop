@@ -25,6 +25,37 @@ function makePegGrid(
   return pegs;
 }
 
+// ─── Ring gate generator (rotating C-ring with gap) ──────────────────────
+// Produces a thick arc (donut section) polygon that spins around its centre.
+// The gap angle is centred on angle=0 (right side); rotation handles timing.
+// Gap chord at midRadius = 2 * midR * sin(gapAngle/2) – must be > 40 (marble ⌀).
+function makeRingGate(
+  cx: number, cy: number,
+  outerR: number, innerR: number,
+  gapAngle: number,   // radians; gap chord should be > 40 px
+  av: number,         // angular velocity (rad/tick)
+): { type: 'polygon'; position: { x: number; y: number }; vertices: { x: number; y: number }[]; angularVelocity: number; restitution: number } {
+  const N = 22;  // arc subdivisions for smooth shape
+  const startA = gapAngle / 2;
+  const endA = Math.PI * 2 - gapAngle / 2;
+  const verts: { x: number; y: number }[] = [];
+  // outer arc CW
+  for (let i = 0; i <= N; i++) {
+    const a = startA + (endA - startA) * i / N;
+    verts.push({ x: Math.cos(a) * outerR, y: Math.sin(a) * outerR });
+  }
+  // inner arc back CCW
+  for (let i = N; i >= 0; i--) {
+    const a = startA + (endA - startA) * i / N;
+    verts.push({ x: Math.cos(a) * innerR, y: Math.sin(a) * innerR });
+  }
+  // Centre on arithmetic mean — Matter.js uses this as body origin in fromVertices
+  const meanX = verts.reduce((s, v) => s + v.x, 0) / verts.length;
+  const meanY = verts.reduce((s, v) => s + v.y, 0) / verts.length;
+  const centred = verts.map(v => ({ x: v.x - meanX, y: v.y - meanY }));
+  return { type: 'polygon', position: { x: cx, y: cy }, vertices: centred, angularVelocity: av, restitution: 0.3 };
+}
+
 // ─── Map 1: The Gauntlet ───────────────────────────────────────────────────
 const map1: MapData = {
   id: 'map1',
@@ -44,11 +75,13 @@ const map1: MapData = {
     { type: 'rectangle', position: { x: 400, y: 450 }, size: { x: 260, y: 24 }, angle: 0, angularVelocity: 0.04 },
     { type: 'rectangle', position: { x: 190, y: 660 }, size: { x: 180, y: 24 }, angle: 0, angularVelocity: -0.05 },
     { type: 'rectangle', position: { x: 610, y: 660 }, size: { x: 180, y: 24 }, angle: 0, angularVelocity: 0.05 },
-    // Section 2 – zigzag ramps
-    { type: 'rectangle', position: { x: 220, y: 900 }, size: { x: 380, y: 38 }, angle: 0.30 },
-    { type: 'rectangle', position: { x: 580, y: 1100 }, size: { x: 380, y: 38 }, angle: -0.30 },
-    { type: 'rectangle', position: { x: 220, y: 1300 }, size: { x: 380, y: 38 }, angle: 0.30 },
-    { type: 'rectangle', position: { x: 580, y: 1500 }, size: { x: 380, y: 38 }, angle: -0.30 },
+    // Ring gate A – timing gate between section 1 spinners and zigzag
+    makeRingGate(400, 780, 80, 56, 1.3, 0.025),
+    // Section 2 – slowly rotating zigzag ramps (sweep as marble falls = longer route)
+    { type: 'rectangle', position: { x: 220, y: 900 }, size: { x: 380, y: 38 }, angle: 0.30, angularVelocity: 0.010 },
+    { type: 'rectangle', position: { x: 580, y: 1100 }, size: { x: 380, y: 38 }, angle: -0.30, angularVelocity: -0.010 },
+    { type: 'rectangle', position: { x: 220, y: 1300 }, size: { x: 380, y: 38 }, angle: 0.30, angularVelocity: 0.010 },
+    { type: 'rectangle', position: { x: 580, y: 1500 }, size: { x: 380, y: 38 }, angle: -0.30, angularVelocity: -0.010 },
     // Section 3 – spinning circles + ramp pair
     { type: 'circle', position: { x: 200, y: 1700 }, radius: 50, angularVelocity: 0.12 },
     { type: 'circle', position: { x: 600, y: 1800 }, radius: 50, angularVelocity: -0.12 },
@@ -57,11 +90,16 @@ const map1: MapData = {
     { type: 'rectangle', position: { x: 148, y: 2100 }, size: { x: 256, y: 30 }, angle: 0.12 },
     { type: 'rectangle', position: { x: 652, y: 2100 }, size: { x: 256, y: 30 }, angle: -0.12 },
     { type: 'rectangle', position: { x: 400, y: 2100 }, size: { x: 80, y: 20 }, angle: 0, angularVelocity: 0.12 },
+    // Ring gates B – twin gates between choke and staircase
+    makeRingGate(200, 2230, 65, 44, 1.25, -0.030),
+    makeRingGate(600, 2230, 65, 44, 1.25, 0.030),
     // Section 5 – staircase bounce
     { type: 'rectangle', position: { x: 600, y: 2350 }, size: { x: 330, y: 34 }, angle: -0.18 },
     { type: 'rectangle', position: { x: 200, y: 2550 }, size: { x: 330, y: 34 }, angle: 0.18 },
     { type: 'rectangle', position: { x: 600, y: 2750 }, size: { x: 330, y: 34 }, angle: -0.18 },
     { type: 'rectangle', position: { x: 200, y: 2950 }, size: { x: 330, y: 34 }, angle: 0.18 },
+    // Ring gate C – timed ring between staircase and big spinner
+    makeRingGate(400, 3060, 75, 52, 1.3, 0.022),
     // Section 6 – big spinner + satellite
     { type: 'rectangle', position: { x: 400, y: 3200 }, size: { x: 380, y: 28 }, angle: 0, angularVelocity: 0.03 },
     { type: 'rectangle', position: { x: 220, y: 3420 }, size: { x: 260, y: 24 }, angle: 0, angularVelocity: -0.045 },
@@ -73,6 +111,9 @@ const map1: MapData = {
     // Section 8 – steep zigzag
     { type: 'rectangle', position: { x: 200, y: 3900 }, size: { x: 380, y: 44 }, angle: 0.45 },
     { type: 'rectangle', position: { x: 600, y: 4130 }, size: { x: 380, y: 44 }, angle: -0.45 },
+    // Ring gates D – twin gates before final approach
+    makeRingGate(200, 4240, 60, 42, 1.2, -0.028),
+    makeRingGate(600, 4240, 60, 42, 1.2, 0.028),
     // Section 9 – final approach spinners
     { type: 'rectangle', position: { x: 400, y: 4370 }, size: { x: 320, y: 26 }, angle: 0, angularVelocity: 0.06 },
     { type: 'circle', position: { x: 200, y: 4570 }, radius: 48, angularVelocity: -0.15 },
@@ -107,16 +148,27 @@ const map2: MapData = {
     // Spawn funnel
     { type: 'rectangle', position: { x: 130, y: 200 }, size: { x: 320, y: 28 }, angle: 0.65 },
     { type: 'rectangle', position: { x: 670, y: 200 }, size: { x: 320, y: 28 }, angle: -0.65 },
+    // Ring gate – entry timing gate above the peg field
+    makeRingGate(400, 430, 70, 48, 1.25, 0.020),
     // Deflector platforms – break up the peg field at intervals
     { type: 'rectangle', position: { x: 600, y: 1000 }, size: { x: 200, y: 24 }, angle: -0.2 },
     { type: 'rectangle', position: { x: 200, y: 1000 }, size: { x: 200, y: 24 }, angle: 0.2 },
     { type: 'rectangle', position: { x: 400, y: 1600 }, size: { x: 260, y: 28 }, angle: 0, angularVelocity: 0.02 },
+    // Ring gates flanking the y=1600 deflector
+    makeRingGate(170, 1740, 65, 44, 1.2, -0.025),
+    makeRingGate(630, 1740, 65, 44, 1.2, 0.025),
     { type: 'rectangle', position: { x: 600, y: 2200 }, size: { x: 200, y: 24 }, angle: -0.2 },
     { type: 'rectangle', position: { x: 200, y: 2200 }, size: { x: 200, y: 24 }, angle: 0.2 },
     { type: 'rectangle', position: { x: 400, y: 2800 }, size: { x: 260, y: 28 }, angle: 0, angularVelocity: -0.02 },
+    // Ring gates flanking the y=2800 deflector
+    makeRingGate(170, 2940, 65, 44, 1.2, 0.025),
+    makeRingGate(630, 2940, 65, 44, 1.2, -0.025),
     { type: 'rectangle', position: { x: 600, y: 3400 }, size: { x: 200, y: 24 }, angle: -0.2 },
     { type: 'rectangle', position: { x: 200, y: 3400 }, size: { x: 200, y: 24 }, angle: 0.2 },
     { type: 'rectangle', position: { x: 400, y: 4000 }, size: { x: 260, y: 28 }, angle: 0, angularVelocity: 0.03 },
+    // Ring gates flanking the y=4000 deflector
+    makeRingGate(170, 4140, 65, 44, 1.2, -0.022),
+    makeRingGate(630, 4140, 65, 44, 1.2, 0.022),
     { type: 'rectangle', position: { x: 600, y: 4500 }, size: { x: 200, y: 24 }, angle: -0.15 },
     { type: 'rectangle', position: { x: 200, y: 4500 }, size: { x: 200, y: 24 }, angle: 0.15 },
   ],
@@ -166,6 +218,8 @@ const map3: MapData = {
     { type: 'rectangle', position: { x: 400, y: 950 }, size: { x: 200, y: 26 }, angle: 0, angularVelocity: 0.06 },
     { type: 'rectangle', position: { x: 200, y: 1150 }, size: { x: 360, y: 38 }, angle: 0.38 },
     { type: 'rectangle', position: { x: 600, y: 1350 }, size: { x: 360, y: 38 }, angle: -0.38 },
+    // Ring gate – timing gate between ramps and tight section
+    makeRingGate(400, 1480, 72, 50, 1.3, -0.028),
     // Section 3 – tight canyon with multi-spinners
     // Plates shortened (170 → right edge at 225) so gap to spinner (left edge 285) is 60px > marble diameter
     { type: 'rectangle', position: { x: 140, y: 1600 }, size: { x: 170, y: 28 }, angle: 0.12 },
@@ -175,14 +229,16 @@ const map3: MapData = {
     // Section 4 – massive spinning cross
     { type: 'rectangle', position: { x: 400, y: 1900 }, size: { x: 400, y: 26 }, angle: 0, angularVelocity: 0.035 },
     { type: 'rectangle', position: { x: 400, y: 1900 }, size: { x: 26, y: 400 }, angle: 0, angularVelocity: 0.035 },
+    // Ring gate – between spinning cross and wrecking ball section
+    makeRingGate(400, 2075, 68, 46, 1.25, 0.030),
     // Section 5 – three wrecking balls
     { type: 'circle', position: { x: 150, y: 2200 }, radius: 65, angularVelocity: 0.22 },
     { type: 'circle', position: { x: 400, y: 2200 }, radius: 55, angularVelocity: -0.22 },
     { type: 'circle', position: { x: 650, y: 2200 }, radius: 65, angularVelocity: 0.22 },
-    // Section 6 – long steep zigzag
-    { type: 'rectangle', position: { x: 200, y: 2500 }, size: { x: 420, y: 44 }, angle: 0.48 },
-    { type: 'rectangle', position: { x: 600, y: 2780 }, size: { x: 420, y: 44 }, angle: -0.48 },
-    { type: 'rectangle', position: { x: 200, y: 3060 }, size: { x: 420, y: 44 }, angle: 0.48 },
+    // Section 6 – slowly rotating steep zigzag (continuous sweep prolongs descent)
+    { type: 'rectangle', position: { x: 200, y: 2500 }, size: { x: 420, y: 44 }, angle: 0.48, angularVelocity: 0.008 },
+    { type: 'rectangle', position: { x: 600, y: 2780 }, size: { x: 420, y: 44 }, angle: -0.48, angularVelocity: -0.008 },
+    { type: 'rectangle', position: { x: 200, y: 3060 }, size: { x: 420, y: 44 }, angle: 0.48, angularVelocity: 0.008 },
     // Section 7 – quad spinners
     { type: 'rectangle', position: { x: 200, y: 3350 }, size: { x: 200, y: 22 }, angle: 0, angularVelocity: -0.07 },
     { type: 'rectangle', position: { x: 600, y: 3350 }, size: { x: 200, y: 22 }, angle: 0, angularVelocity: 0.07 },
@@ -192,6 +248,9 @@ const map3: MapData = {
     { type: 'circle', position: { x: 400, y: 3800 }, radius: 80, angularVelocity: 0.25 },
     { type: 'circle', position: { x: 170, y: 4020 }, radius: 55, angularVelocity: -0.20 },
     { type: 'circle', position: { x: 630, y: 4020 }, radius: 55, angularVelocity: 0.20 },
+    // Ring gates – twin gates before final maze
+    makeRingGate(200, 4155, 62, 42, 1.2, -0.025),
+    makeRingGate(600, 4155, 62, 42, 1.2, 0.025),
     // Section 9 – final sprint maze walls
     { type: 'rectangle', position: { x: 600, y: 4280 }, size: { x: 380, y: 32 }, angle: -0.22 },
     { type: 'rectangle', position: { x: 200, y: 4460 }, size: { x: 380, y: 32 }, angle: 0.22 },
@@ -210,7 +269,82 @@ const map3: MapData = {
   ]
 };
 
-const allMaps: MapData[] = [map1, map2, map3];
+// ─── Extend maps to 5× length ─────────────────────────────────────────────
+// Duplicates all content obstacles, pegs, and bumpers 5 times vertically,
+// extends walls, and moves the finish zone to the very end.
+function extendMap(map: MapData, copies: number): MapData {
+  const origHeight = map.worldSize.y;
+  const newHeight = origHeight * copies;
+
+  // First 3 staticObstacles are always: left wall, right wall, floor
+  const contentObstacles = map.staticObstacles.slice(3);
+
+  const newObstacles: MapData['staticObstacles'] = [
+    // Extended side walls
+    { type: 'rectangle', position: { x: 0, y: newHeight / 2 }, size: { x: 40, y: newHeight }, angle: 0 },
+    { type: 'rectangle', position: { x: map.worldSize.x, y: newHeight / 2 }, size: { x: 40, y: newHeight }, angle: 0 },
+    // Floor at new bottom
+    { type: 'rectangle', position: { x: map.worldSize.x / 2, y: newHeight + 20 }, size: { x: map.worldSize.x, y: 40 }, angle: 0 },
+  ];
+
+  for (let c = 0; c < copies; c++) {
+    const yOffset = c * origHeight;
+    for (const obs of contentObstacles) {
+      newObstacles.push({
+        ...obs,
+        position: { x: obs.position.x, y: obs.position.y + yOffset },
+      });
+    }
+  }
+
+  const newPegs: MapData['pegs'] = [];
+  for (let c = 0; c < copies; c++) {
+    const yOffset = c * origHeight;
+    for (const peg of map.pegs) {
+      newPegs.push({
+        ...peg,
+        position: { x: peg.position.x, y: peg.position.y + yOffset },
+      });
+    }
+  }
+
+  const newBumpers: MapData['bumpers'] = [];
+  for (let c = 0; c < copies; c++) {
+    const yOffset = c * origHeight;
+    for (const bumper of map.bumpers) {
+      newBumpers.push({
+        ...bumper,
+        position: { x: bumper.position.x, y: bumper.position.y + yOffset },
+      });
+    }
+  }
+
+  const newPath: Vector2[] = [];
+  for (let c = 0; c < copies; c++) {
+    const yOffset = c * origHeight;
+    for (const p of map.path) {
+      newPath.push({ x: p.x, y: p.y + yOffset });
+    }
+  }
+
+  return {
+    ...map,
+    worldSize: { x: map.worldSize.x, y: newHeight },
+    staticObstacles: newObstacles,
+    pegs: newPegs,
+    bumpers: newBumpers,
+    checkpoints: map.checkpoints,
+    finishZone: {
+      x: map.finishZone.x,
+      y: newHeight - (origHeight - map.finishZone.y),
+      width: map.finishZone.width,
+      height: map.finishZone.height,
+    },
+    path: newPath,
+  };
+}
+
+const allMaps: MapData[] = [map1, map2, map3].map(m => extendMap(m, 5));
 
 const mapInfoList: MapInfo[] = [
   { id: 'map1', name: 'The Gauntlet', description: 'Spinning blades, tight passages, and steep zigzag ramps. A mechanical gauntlet.', difficulty: 3, theme: '#f59e0b' },
@@ -254,6 +388,7 @@ async function startServer() {
   let spinningBodyOrigins: Map<Matter.Body, { x: number; y: number }> = new Map();
   let spinningBodyTargetAV: Map<Matter.Body, number> = new Map();
   let ballStuckTime: Map<string, number> = new Map();
+  let ballNextNudge: Map<string, number> = new Map();
   let raceEndTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function finalizeRace() {
@@ -306,6 +441,11 @@ async function startServer() {
           body = Matter.Bodies.rectangle(obs.position.x, obs.position.y, obs.size!.x, obs.size!.y, spinnerOpts);
         } else if (obs.type === 'circle') {
           body = Matter.Bodies.circle(obs.position.x, obs.position.y, obs.radius!, spinnerOpts);
+        } else if (obs.type === 'polygon' && obs.vertices) {
+          // fromVertices decomposes concave shapes (poly-decomp bundled in matter-js 0.20)
+          body = Matter.Bodies.fromVertices(obs.position.x, obs.position.y, [obs.vertices as Matter.Vector[]], spinnerOpts, true);
+          // Re-centre after decomp to ensure body sits at the declared position
+          if (body) Matter.Body.setPosition(body, { x: obs.position.x, y: obs.position.y });
         }
         if (body) {
           // Enormous mass so no marble can meaningfully move it
@@ -327,6 +467,9 @@ async function startServer() {
           body = Matter.Bodies.rectangle(obs.position.x, obs.position.y, obs.size!.x, obs.size!.y, staticOpts);
         } else if (obs.type === 'circle') {
           body = Matter.Bodies.circle(obs.position.x, obs.position.y, obs.radius!, staticOpts);
+        } else if (obs.type === 'polygon' && obs.vertices) {
+          body = Matter.Bodies.fromVertices(obs.position.x, obs.position.y, [obs.vertices as Matter.Vector[]], staticOpts, true);
+          if (body) Matter.Body.setPosition(body, { x: obs.position.x, y: obs.position.y });
         }
       }
 
@@ -421,29 +564,32 @@ async function startServer() {
 
           // Stuck detection
           const speed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
-          if (speed < 0.2) {
+          if (speed < 0.5) {
             const stuckTime = (ballStuckTime.get(id) || 0) + 1;
             ballStuckTime.set(id, stuckTime);
 
-            if (stuckTime > 120) { // 2 seconds at 60fps
-              // Apply random impulse
-              const force = {
-                x: (Math.random() - 0.5) * 0.05,
-                y: (Math.random() - 0.5) * 0.05
-              };
-              Matter.Body.applyForce(body, body.position, force);
-              ballStuckTime.set(id, 0); // Reset after nudge
+            if (stuckTime > 120) { // 2 seconds at 60fps – apply a strong rescue kick
+              Matter.Body.applyForce(body, body.position, {
+                x: (Math.random() - 0.5) * 0.12,
+                y: -Math.random() * 0.08  // bias upward to clear a ledge
+              });
+              ballStuckTime.set(id, 0);
             }
           } else {
             ballStuckTime.set(id, 0);
+          }
 
-            // Periodic tiny nudge to prevent perfect balance
-            if (now % 3000 < 20) { // Every ~3 seconds
-              Matter.Body.applyForce(body, body.position, {
-                x: (Math.random() - 0.5) * 0.005,
-                y: (Math.random() - 0.5) * 0.005
-              });
-            }
+          // Scheduled random nudge every 1 s to prevent marbles settling into
+          // a perfect balance or getting pinned against a wall
+          const nextNudge = ballNextNudge.get(id) ?? (now + 1000);
+          ballNextNudge.set(id, nextNudge);
+          if (now >= nextNudge) {
+            Matter.Body.applyForce(body, body.position, {
+              x: (Math.random() - 0.5) * 0.018,
+              y: (Math.random() - 0.5) * 0.010
+            });
+            // Schedule next nudge 1 s from now
+            ballNextNudge.set(id, now + 1000);
           }
 
           // Check finish
@@ -509,6 +655,8 @@ async function startServer() {
       raceState.balls = {};
       ballBodies.forEach(body => Matter.World.remove(world, body));
       ballBodies.clear();
+      ballStuckTime.clear();
+      ballNextNudge.clear();
 
       // Use the hardcoded players
       Array.from(players.values()).forEach((player, index) => {
