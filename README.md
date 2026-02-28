@@ -15,6 +15,15 @@ View your app in AI Studio: https://ai.studio/apps/80433b07-89c8-4f55-b01f-60f63
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Create a local env file:
+   `cp .env.example .env.local`
+3. Set `MUSICFY_API_KEY` in `.env.local` for Musicfy voice conversion
+4. (Optional) Set `GEMINI_API_KEY` if you use Gemini features
+5. Run the app:
    `npm run dev`
+
+## Persistence
+
+- Saved characters are stored in `data/ball_drop.sqlite`
+- Generated cover outputs are downloaded to `storage/audio/`
+- These are reused after restart so you can pick previously saved characters and outputs

@@ -50,6 +50,7 @@ export interface Player {
   name: string;
   spriteUrl: string;
   color: string;
+  musicfyVoiceId?: string;
 }
 
 export interface BallState {
@@ -81,6 +82,8 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-  join: (player: { name: string; spriteUrl: string }) => void;
+  join: (player: { name: string; spriteUrl: string; musicfyVoiceId?: string }) => void;
+  addMusicfyPlayer: (player: { name: string; spriteUrl: string; musicfyVoiceId: string }) => void;
+  removePlayer: (playerId: string) => void;
   startRace: (mapId: string) => void;
 }
