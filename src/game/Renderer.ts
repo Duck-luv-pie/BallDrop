@@ -78,6 +78,25 @@ export class Renderer {
       ctx.restore();
     });
 
+    // Draw Pegs (black circles)
+    ctx.fillStyle = '#000000';
+    map.pegs.forEach(peg => {
+      ctx.beginPath();
+      ctx.arc(peg.position.x, peg.position.y, peg.radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Draw Bumpers (black circles with a white ring so they're distinguishable)
+    map.bumpers.forEach(bumper => {
+      ctx.beginPath();
+      ctx.arc(bumper.position.x, bumper.position.y, bumper.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    });
+
     // Draw Finish Zone (Checkered)
     const cellSize = 40;
     for (let x = map.finishZone.x; x < map.finishZone.x + map.finishZone.width; x += cellSize) {
