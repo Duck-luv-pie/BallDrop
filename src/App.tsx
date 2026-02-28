@@ -592,12 +592,41 @@ const App: React.FC = () => {
       return;
     }
 
-    const selectedPlayers = musicfyPlayers.filter(
+    let selectedPlayers = musicfyPlayers.filter(
       (player) => selectedSingerIds.includes(player.id) && player.musicfyVoiceId
     );
 
+    if (selectedPlayers.length === 0 && musicfyPlayers.length > 0) {
+      selectedPlayers = musicfyPlayers.filter((player) => Boolean(player.musicfyVoiceId));
+      setSelectedSingerIds(selectedPlayers.map((player) => player.id));
+    }
+
     if (selectedPlayers.length === 0) {
-      setCoverError('Select at least one Musicfy player to sing.');
+      if (!socket) {
+        setCoverError('Socket is not connected yet.');
+        return;
+      }
+
+      const fallbackVoiceId = selectedVoiceId || musicfyVoices[0]?.id;
+      if (!fallbackVoiceId) {
+        setCoverError('Load Musicfy characters first, then try again.');
+        return;
+      }
+
+      const selectedVoice = musicfyVoices.find((voice) => voice.id === fallbackVoiceId);
+      const name = resolveCharacterName(fallbackVoiceId, characterName.trim() || selectedVoice?.name || 'Musicfy Character');
+      const spriteUrl =
+        characterSpriteUrl.trim() ||
+        selectedVoice?.avatarUrl ||
+        `https://picsum.photos/seed/${encodeURIComponent(fallbackVoiceId)}/100/100`;
+
+      socket.emit('addMusicfyPlayer', {
+        name,
+        spriteUrl,
+        musicfyVoiceId: fallbackVoiceId
+      });
+
+      setCoverError('Added a Musicfy player to the race. Click Upload Song & Generate again.');
       return;
     }
 
@@ -839,6 +868,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const audio = leaderSongAudioRef.current;
     if (!audio) return;
+    let metadataHandler: (() => void) | null = null;
 
     const shouldPlayLeaderSong = raceState?.status === 'racing' && Boolean(liveLeaderSongUrl);
     if (!shouldPlayLeaderSong) {
@@ -852,14 +882,39 @@ const App: React.FC = () => {
     }
 
     if (activeLeaderSongUrlRef.current !== liveLeaderSongUrl) {
+      const resumeTime = Number.isFinite(audio.currentTime) ? Math.max(0, audio.currentTime) : 0;
       activeLeaderSongUrlRef.current = liveLeaderSongUrl;
       audio.src = liveLeaderSongUrl!;
-      audio.currentTime = 0;
       audio.load();
+
+      if (resumeTime > 0) {
+        metadataHandler = () => {
+          const duration = Number.isFinite(audio.duration) ? audio.duration : NaN;
+          const nextTime = Number.isFinite(duration) && duration > 0
+            ? Math.min(resumeTime, Math.max(0, duration - 0.05))
+            : resumeTime;
+          audio.currentTime = nextTime;
+        };
+
+        if (audio.readyState >= 1) {
+          metadataHandler();
+          metadataHandler = null;
+        } else {
+          audio.addEventListener('loadedmetadata', metadataHandler, { once: true });
+        }
+      }
     }
 
     void audio.play().catch(() => undefined);
+
+    return () => {
+      if (metadataHandler) {
+        audio.removeEventListener('loadedmetadata', metadataHandler);
+      }
+    };
   }, [liveLeaderSongUrl, raceState?.status]);
+
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a] text-white font-sans flex items-center justify-center p-4">
@@ -922,6 +977,7 @@ const App: React.FC = () => {
         )}
 
         {/* Musicfy Controls */}
+        {!isInIframe && (
         <div className="absolute top-16 left-4 bottom-16 w-72 z-10 pointer-events-none">
           <div className="bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl shadow-xl pointer-events-auto max-h-full overflow-y-auto space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -1152,6 +1208,7 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+        )}
 
         {/* Leaderboard: Right Side */}
         <div className="absolute top-16 right-4 bottom-16 w-48 z-10 pointer-events-none">

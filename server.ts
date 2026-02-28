@@ -18,6 +18,11 @@ const PORT = Number(process.env.PORT || 3000);
 const MUSICFY_API_BASE_URL = process.env.MUSICFY_BASE_URL || 'https://api.musicfy.lol/v1';
 const DEFAULT_MUSICFY_VOICE_ID = 'cmm6o33lf0001jy071favwx29';
 const MUSICFY_API_KEY = process.env.MUSICFY_API_KEY || DEFAULT_MUSICFY_VOICE_ID;
+const MUSICFY_ALLOW_INSECURE_TLS = (process.env.MUSICFY_ALLOW_INSECURE_TLS || 'true').toLowerCase() === 'true';
+
+if (MUSICFY_ALLOW_INSECURE_TLS) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 
 const FALLBACK_MUSICFY_VOICES: MusicfyVoice[] = [
   {
