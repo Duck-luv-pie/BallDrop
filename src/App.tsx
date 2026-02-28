@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MapData, RaceState, Player, BallState, ServerToClientEvents, ClientToServerEvents } from './types';
+import { MapData, RaceState, Player, BallState, ServerToClientEvents, ClientToServerEvents, MapInfo } from './types';
 import { Renderer } from './game/Renderer';
-import { Trophy, Play, Camera, ChevronRight, User, Image as ImageIcon } from 'lucide-react';
+import { Trophy, Play, Camera, ChevronRight, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const App: React.FC = () => {
@@ -15,6 +15,8 @@ const App: React.FC = () => {
   const [spriteUrl, setSpriteUrl] = useState('');
   const [results, setResults] = useState<{ playerId: string; name: string; rank: number; time: number }[] | null>(null);
   const [showGo, setShowGo] = useState(false);
+  const [availableMaps, setAvailableMaps] = useState<MapInfo[]>([]);
+  const [selectedMapId, setSelectedMapId] = useState<string>('map1');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -32,6 +34,10 @@ const App: React.FC = () => {
       setPlayers(data.players);
       setRaceState(data.currentRace);
       setMap(data.map);
+      if (data.maps && data.maps.length > 0) {
+        setAvailableMaps(data.maps);
+        setSelectedMapId(data.maps[0].id);
+      }
     });
 
     newSocket.on('playerJoined', (player) => {
@@ -159,7 +165,7 @@ const App: React.FC = () => {
 
   const handleStartRace = () => {
     if (socket) {
-      socket.emit('startRace', 'map1');
+      socket.emit('startRace', selectedMapId);
     }
   };
 
@@ -188,144 +194,237 @@ const App: React.FC = () => {
         ref={popupRef}
         className="relative w-full max-w-[1200px] h-[86vh] max-h-[760px] min-h-[520px] bg-[#050505] rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
       >
-      {/* HUD: Top Bar */}
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 pointer-events-none">
-        <div className="flex flex-col gap-2 pointer-events-auto">
-          <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3 rounded-xl flex items-center gap-3 shadow-xl">
-            <Trophy className="w-4 h-4 text-emerald-400" />
-            <p className="text-sm font-black uppercase tracking-tighter">{map?.name || 'Marble Race'}</p>
-          </div>
-        </div>
-
-        {liveLeaderPlayer && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-4 pointer-events-none">
-            <div className="bg-black/45 backdrop-blur-md border border-white/10 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2">
-              <img
-                src={liveLeaderPlayer.spriteUrl}
-                alt={liveLeaderPlayer.name}
-                className="w-16 h-16 rounded-full border-2 border-white/40 object-cover"
-              />
+        {/* HUD: Top Bar */}
+        <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 pointer-events-none">
+          <div className="flex flex-col gap-2 pointer-events-auto">
+            <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3 rounded-xl flex items-center gap-3 shadow-xl">
+              <Trophy className="w-4 h-4 text-emerald-400" />
+              <p className="text-sm font-black uppercase tracking-tighter">{map?.name || 'Marble Race'}</p>
             </div>
           </div>
-        )}
 
-        <div className="flex flex-col items-end gap-2 pointer-events-auto">
-          {(raceState?.status === 'waiting' || raceState?.status === 'finished') && (
-            <button
-              onClick={handleStartRace}
-              className="bg-white text-black font-black px-6 py-3 rounded-xl transition-all shadow-xl flex items-center gap-2 uppercase tracking-tighter hover:scale-105 active:scale-95"
-            >
-              <Play className="w-4 h-4 fill-current" /> {raceState?.status === 'finished' ? 'Restart' : 'Start'}
-            </button>
-          )}
-        </div>
-      </div>
-          
-          {(raceState?.status === 'countdown' || showGo) && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
-              <motion.div 
-                key={showGo ? 'go' : raceState?.countdown}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1.2, opacity: 1 }}
-                exit={{ scale: 2, opacity: 0 }}
-                className="text-white font-black text-[200px] drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] stroke-black"
-                style={{ WebkitTextStroke: '8px black' }}
-              >
-                {showGo ? 'GO!' : raceState?.countdown}
-              </motion.div>
+          {liveLeaderPlayer && (
+            <div className="absolute left-1/2 -translate-x-1/2 top-4 pointer-events-none">
+              <div className="bg-black/45 backdrop-blur-md border border-white/10 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2">
+                <img
+                  src={liveLeaderPlayer.spriteUrl}
+                  alt={liveLeaderPlayer.name}
+                  className="w-16 h-16 rounded-full border-2 border-white/40 object-cover"
+                />
+              </div>
             </div>
           )}
 
-      {/* Leaderboard: Right Side */}
-      <div className="absolute top-16 right-4 bottom-16 w-48 z-10 pointer-events-none">
-        <div className="bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl shadow-xl pointer-events-auto max-h-full overflow-y-auto">
-          <div className="space-y-2">
-            {(Object.values(raceState?.balls || {}) as BallState[])
-              .sort((a, b) => b.progress - a.progress)
-              .map((ball, idx) => {
-                const player = players.find(p => p.id === ball.id);
-                return (
-                  <div key={ball.id} className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black text-white/40">{idx + 1}</span>
-                      <span className="text-xs font-black uppercase tracking-tighter truncate max-w-[80px]">{player?.name}</span>
-                    </div>
-                    {ball.finished && <Trophy className="w-3 h-3 text-yellow-400" />}
-                  </div>
-                );
-              })}
+          <div className="flex flex-col items-end gap-2 pointer-events-auto">
           </div>
         </div>
-      </div>
 
-      {/* Main Canvas */}
-      <canvas
-        ref={canvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        className="w-full h-full cursor-crosshair"
-      />
-
-      {/* Results Modal */}
-      <AnimatePresence>
-        {results && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-          >
+        {(raceState?.status === 'countdown' || showGo) && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
             <motion.div
-              initial={{ scale: 0.9, y: 24, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 24, opacity: 0 }}
-              className="w-[320px] max-w-full bg-black/90 rounded-2xl border border-white/15 p-4 shadow-2xl pointer-events-auto"
+              key={showGo ? 'go' : raceState?.countdown}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1.2, opacity: 1 }}
+              exit={{ scale: 2, opacity: 0 }}
+              className="text-white font-black text-[200px] drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] stroke-black"
+              style={{ WebkitTextStroke: '8px black' }}
             >
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white/50">Winner</h2>
-                <button
-                  onClick={() => setResults(null)}
-                  className="text-xs font-black uppercase tracking-tighter text-white/60 hover:text-white"
-                >
-                  Close
-                </button>
-              </div>
-
-              {winner && (
-                <div className="mb-4 p-3 rounded-xl border border-white/20 bg-white/10 text-center">
-                  {winnerPlayer?.spriteUrl && (
-                    <img
-                      src={winnerPlayer.spriteUrl}
-                      alt={winner.name}
-                      className="w-14 h-14 rounded-full mx-auto mb-2 border-2 border-white/40 object-cover"
-                    />
-                  )}
-                  <p className="text-xl font-black tracking-tighter">{winner.name} wins!</p>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                {results.slice(0, 3).map((res, idx) => (
-                  <div key={res.playerId} className={`flex items-center justify-between p-2 rounded-lg border ${idx === 0 ? 'bg-white/10 border-white/30' : 'bg-white/5 border-white/10'}`}>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-sm font-black ${idx === 0 ? 'text-white' : 'text-white/30'}`}>{idx + 1}</span>
-                      <span className="text-xs font-black tracking-tighter">{res.name}</span>
-                    </div>
-                    <span className="font-mono text-xs text-white/40">{(res.time / 1000).toFixed(2)}s</span>
-                  </div>
-                ))}
-              </div>
+              {showGo ? 'GO!' : raceState?.countdown}
             </motion.div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
 
-      {/* Footer Info */}
-      <div className="absolute bottom-4 left-4 z-10">
-        <div className="bg-black/40 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter text-white/40 flex items-center gap-2">
-          <Camera className="w-3 h-3" /> Tracking Leader
+        {/* Leaderboard: Right Side */}
+        <div className="absolute top-16 right-4 bottom-16 w-48 z-10 pointer-events-none">
+          <div className="bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl shadow-xl pointer-events-auto max-h-full overflow-y-auto">
+            <div className="space-y-2">
+              {(Object.values(raceState?.balls || {}) as BallState[])
+                .sort((a, b) => b.progress - a.progress)
+                .map((ball, idx) => {
+                  const player = players.find(p => p.id === ball.id);
+                  return (
+                    <div key={ball.id} className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-white/5 border border-white/5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-white/40">{idx + 1}</span>
+                        <span className="text-xs font-black uppercase tracking-tighter truncate max-w-[80px]">{player?.name}</span>
+                      </div>
+                      {ball.finished && <Trophy className="w-3 h-3 text-yellow-400" />}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
         </div>
-      </div>
+
+        {/* Main Canvas */}
+        <canvas
+          ref={canvasRef}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          className="w-full h-full cursor-crosshair"
+        />
+
+        {/* ── Map Selector Lobby ── */}
+        <AnimatePresence>
+          {(raceState?.status === 'waiting' || raceState?.status === 'finished') && !results && (
+            <motion.div
+              key="lobby"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-40 flex items-center justify-center p-6"
+              style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(10,10,30,0.92) 0%, rgba(0,0,0,0.97) 100%)' }}
+            >
+              <motion.div
+                initial={{ scale: 0.92, y: 30, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.92, y: 30, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+                className="w-full max-w-[860px] flex flex-col gap-6"
+              >
+                {/* Header */}
+                <div className="text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-1">
+                    {raceState?.status === 'finished' ? 'Play Again' : 'Marble Race'}
+                  </p>
+                  <h1 className="text-4xl font-black uppercase tracking-tighter">Select Your Course</h1>
+                </div>
+
+                {/* Map Cards */}
+                <div className="grid grid-cols-3 gap-4">
+                  {availableMaps.map((info) => {
+                    const isSelected = selectedMapId === info.id;
+                    return (
+                      <button
+                        key={info.id}
+                        onClick={() => setSelectedMapId(info.id)}
+                        className={`relative text-left rounded-2xl border transition-all duration-150 overflow-hidden flex flex-col ${isSelected
+                            ? 'border-white/50 shadow-[0_0_30px_rgba(255,255,255,0.12)] scale-[1.02]'
+                            : 'border-white/10 hover:border-white/25 hover:scale-[1.01]'
+                          }`}
+                      >
+                        {/* Color bar */}
+                        <div
+                          className="h-1.5 w-full flex-shrink-0"
+                          style={{ background: info.theme }}
+                        />
+                        <div className="p-4 flex flex-col gap-2 bg-white/5">
+                          {/* Map name */}
+                          <p className="font-black text-sm uppercase tracking-tighter leading-tight">{info.name}</p>
+                          {/* Difficulty */}
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="w-3 h-1.5 rounded-sm"
+                                style={{ background: i < info.difficulty ? info.theme : 'rgba(255,255,255,0.12)' }}
+                              />
+                            ))}
+                          </div>
+                          {/* Description */}
+                          <p className="text-[11px] text-white/50 leading-snug">{info.description}</p>
+                        </div>
+                        {/* Selected indicator */}
+                        {isSelected && (
+                          <div
+                            className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center"
+                            style={{ background: info.theme }}
+                          >
+                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                              <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Start button */}
+                <div className="flex justify-center">
+                  <button
+                    onClick={handleStartRace}
+                    className="bg-white text-black font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-tighter flex items-center gap-3 hover:scale-105 active:scale-95 transition-transform shadow-2xl"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    Start Race
+                  </button>
+                </div>
+
+                {/* Future selectors placeholder note */}
+                <div className="flex justify-center gap-4 opacity-30 pointer-events-none select-none">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">
+                    <User className="w-3 h-3" /> Characters — coming soon
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">
+                    <ChevronRight className="w-3 h-3" /> Music — coming soon
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Results Modal */}
+        <AnimatePresence>
+          {results && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 24, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.9, y: 24, opacity: 0 }}
+                className="w-[320px] max-w-full bg-black/90 rounded-2xl border border-white/15 p-4 shadow-2xl pointer-events-auto"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white/50">Winner</h2>
+                  <button
+                    onClick={() => setResults(null)}
+                    className="text-xs font-black uppercase tracking-tighter text-white/60 hover:text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {winner && (
+                  <div className="mb-4 p-3 rounded-xl border border-white/20 bg-white/10 text-center">
+                    {winnerPlayer?.spriteUrl && (
+                      <img
+                        src={winnerPlayer.spriteUrl}
+                        alt={winner.name}
+                        className="w-14 h-14 rounded-full mx-auto mb-2 border-2 border-white/40 object-cover"
+                      />
+                    )}
+                    <p className="text-xl font-black tracking-tighter">{winner.name} wins!</p>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  {results.slice(0, 3).map((res, idx) => (
+                    <div key={res.playerId} className={`flex items-center justify-between p-2 rounded-lg border ${idx === 0 ? 'bg-white/10 border-white/30' : 'bg-white/5 border-white/10'}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-sm font-black ${idx === 0 ? 'text-white' : 'text-white/30'}`}>{idx + 1}</span>
+                        <span className="text-xs font-black tracking-tighter">{res.name}</span>
+                      </div>
+                      <span className="font-mono text-xs text-white/40">{(res.time / 1000).toFixed(2)}s</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Footer Info */}
+        <div className="absolute bottom-4 left-4 z-10">
+          <div className="bg-black/40 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tighter text-white/40 flex items-center gap-2">
+            <Camera className="w-3 h-3" /> Tracking Leader
+          </div>
+        </div>
       </div>
     </div>
   );

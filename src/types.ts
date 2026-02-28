@@ -77,7 +77,15 @@ export interface ServerToClientEvents {
   raceEnd: (results: { playerId: string; name: string; rank: number; time: number }[]) => void;
   playerJoined: (player: Player) => void;
   playerLeft: (playerId: string) => void;
-  init: (data: { players: Player[]; currentRace: RaceState | null; map: MapData | null }) => void;
+  init: (data: { players: Player[]; currentRace: RaceState | null; map: MapData | null; maps: MapInfo[] }) => void;
+}
+
+export interface MapInfo {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: number; // 1-5
+  theme: string; // CSS color hint for UI
 }
 
 export interface ClientToServerEvents {
